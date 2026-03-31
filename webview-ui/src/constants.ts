@@ -103,6 +103,13 @@ export const FURNITURE_ANIM_INTERVAL_SEC = 0.2;
 export const WHATS_NEW_AUTO_CLOSE_MS = 20000;
 export const WHATS_NEW_FADE_MS = 1000;
 
+// ── Agent Groups ────────────────────────────────────────────
+export const GROUP_LINE_COLOR = 'rgba(100, 200, 255, 0.35)';
+export const GROUP_LINE_WIDTH = 2;
+export const GROUP_LINE_DASH: [number, number] = [4, 4];
+export const GROUP_BADGE_BG = 'rgba(100, 200, 255, 0.7)';
+export const GROUP_BADGE_FONT_SIZE = 8;
+
 // ── Game Logic ───────────────────────────────────────────────
 export const MAX_DELTA_TIME_SEC = 0.1;
 export const WAITING_BUBBLE_DURATION_SEC = 2.0;

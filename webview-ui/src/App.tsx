@@ -146,6 +146,7 @@ function App() {
     agentStatuses,
     subagentTools,
     subagentCharacters,
+    groups,
     layoutReady,
     layoutWasReset,
     loadedAssets,
@@ -157,6 +158,9 @@ function App() {
     setWatchAllSessions,
     alwaysShowLabels,
   } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty);
+
+  // Multi-select state for group creation
+  const [multiSelectedIds, setMultiSelectedIds] = useState<number[]>([]);
 
   // Show migration notice once layout reset is detected
   const [migrationNoticeDismissed, setMigrationNoticeDismissed] = useState(false);
@@ -209,6 +213,28 @@ function App() {
     useCallback(() => setEditorTickForKeyboard((n) => n + 1), []),
     editor.handleToggleEditMode,
   );
+
+  const handleMultiSelectChange = useCallback((selectedIds: number[]) => {
+    setMultiSelectedIds(selectedIds);
+  }, []);
+
+  const handleCreateGroup = useCallback(() => {
+    if (multiSelectedIds.length < 2) return;
+    const name = `Group ${groups.length + 1}`;
+    vscode.postMessage({ type: 'createGroup', name, agentIds: multiSelectedIds });
+    // Clear multi-select
+    const os = getOfficeState();
+    os.multiSelectedAgentIds.clear();
+    setMultiSelectedIds([]);
+  }, [multiSelectedIds, groups.length]);
+
+  const handleRemoveGroup = useCallback((groupId: string) => {
+    vscode.postMessage({ type: 'removeGroup', groupId });
+  }, []);
+
+  const handleToggleGroup = useCallback((groupId: string) => {
+    vscode.postMessage({ type: 'toggleGroup', groupId });
+  }, []);
 
   const handleCloseAgent = useCallback((id: number) => {
     vscode.postMessage({ type: 'closeAgent', id });
@@ -280,6 +306,7 @@ function App() {
       <OfficeCanvas
         officeState={officeState}
         onClick={handleClick}
+        onMultiSelectChange={handleMultiSelectChange}
         isEditMode={editor.isEditMode}
         editorState={editorState}
         onEditorTileAction={editor.handleEditorTileAction}
@@ -288,6 +315,7 @@ function App() {
         onDeleteSelected={editor.handleDeleteSelected}
         onRotateSelected={editor.handleRotateSelected}
         onDragMove={editor.handleDragMove}
+        groups={groups.filter((g) => g.enabled).map((g) => ({ agentIds: g.agentIds }))}
         editorTick={editor.editorTick}
         zoom={editor.zoom}
         onZoomChange={editor.handleZoomChange}
@@ -324,6 +352,118 @@ function App() {
           vscode.postMessage({ type: 'setWatchAllSessions', enabled: newVal });
         }}
       />
+
+      {/* Multi-select group creation bar */}
+      {multiSelectedIds.length >= 2 && !editor.isEditMode && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 8,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 'var(--pixel-controls-z)',
+            display: 'flex',
+            gap: 6,
+            alignItems: 'center',
+            background: 'var(--pixel-bg)',
+            border: '2px solid var(--pixel-accent)',
+            borderRadius: 0,
+            padding: '4px 10px',
+            boxShadow: 'var(--pixel-shadow)',
+          }}
+        >
+          <span style={{ fontSize: '22px', color: 'var(--pixel-text)' }}>
+            {multiSelectedIds.length} agents selected
+          </span>
+          <button
+            onClick={handleCreateGroup}
+            style={{
+              padding: '4px 12px',
+              fontSize: '22px',
+              background: 'var(--pixel-agent-bg)',
+              color: 'var(--pixel-agent-text)',
+              border: '2px solid var(--pixel-agent-border)',
+              borderRadius: 0,
+              cursor: 'pointer',
+            }}
+          >
+            Create Group
+          </button>
+          <button
+            onClick={() => {
+              const os = getOfficeState();
+              os.multiSelectedAgentIds.clear();
+              setMultiSelectedIds([]);
+            }}
+            style={{
+              padding: '4px 8px',
+              fontSize: '22px',
+              background: 'var(--pixel-btn-bg)',
+              color: 'var(--pixel-text-dim)',
+              border: '2px solid transparent',
+              borderRadius: 0,
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {/* Active groups indicator */}
+      {groups.length > 0 && !editor.isEditMode && multiSelectedIds.length < 2 && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 60,
+            zIndex: 'var(--pixel-controls-z)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+          }}
+        >
+          {groups.map((g) => (
+            <div
+              key={g.id}
+              style={{
+                display: 'flex',
+                gap: 6,
+                alignItems: 'center',
+                background: 'var(--pixel-bg)',
+                border: `2px solid ${g.enabled ? 'var(--pixel-accent)' : 'var(--pixel-border)'}`,
+                borderRadius: 0,
+                padding: '3px 8px',
+                boxShadow: 'var(--pixel-shadow)',
+                opacity: g.enabled ? 1 : 0.6,
+              }}
+            >
+              <span
+                style={{ fontSize: '20px', color: 'var(--pixel-text)', cursor: 'pointer' }}
+                onClick={() => handleToggleGroup(g.id)}
+                title={g.enabled ? 'Click to pause group' : 'Click to resume group'}
+              >
+                {g.name} ({g.agentIds.length})
+              </span>
+              <button
+                onClick={() => handleRemoveGroup(g.id)}
+                style={{
+                  padding: '0 4px',
+                  fontSize: '18px',
+                  background: 'transparent',
+                  color: 'var(--pixel-text-dim)',
+                  border: 'none',
+                  cursor: 'pointer',
+                  lineHeight: 1,
+                }}
+                title="Remove group"
+              >
+                x
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <VersionIndicator
         currentVersion={extensionVersion}

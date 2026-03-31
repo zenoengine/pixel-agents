@@ -46,6 +46,13 @@ export interface WorkspaceFolder {
   path: string;
 }
 
+export interface AgentGroupInfo {
+  id: string;
+  name: string;
+  agentIds: number[];
+  enabled: boolean;
+}
+
 export interface ExtensionMessageState {
   agents: number[];
   selectedAgent: number | null;
@@ -53,6 +60,7 @@ export interface ExtensionMessageState {
   agentStatuses: Record<number, string>;
   subagentTools: Record<number, Record<string, ToolActivity[]>>;
   subagentCharacters: SubagentCharacter[];
+  groups: AgentGroupInfo[];
   layoutReady: boolean;
   layoutWasReset: boolean;
   loadedAssets?: { catalog: FurnitureAsset[]; sprites: Record<string, string[][]> };
@@ -87,6 +95,7 @@ export function useExtensionMessages(
     Record<number, Record<string, ToolActivity[]>>
   >({});
   const [subagentCharacters, setSubagentCharacters] = useState<SubagentCharacter[]>([]);
+  const [groups, setGroups] = useState<AgentGroupInfo[]>([]);
   const [layoutReady, setLayoutReady] = useState(false);
   const [layoutWasReset, setLayoutWasReset] = useState(false);
   const [loadedAssets, setLoadedAssets] = useState<
@@ -414,6 +423,12 @@ export function useExtensionMessages(
         if (Array.isArray(msg.dirs)) {
           setExternalAssetDirectories(msg.dirs as string[]);
         }
+      } else if (msg.type === 'groupsUpdated') {
+        const updatedGroups = msg.groups as AgentGroupInfo[];
+        setGroups(updatedGroups);
+      } else if (msg.type === 'groupBroadcast') {
+        // Visual feedback: flash group connection lines
+        // (handled by renderer via group state — no action needed here)
       } else if (msg.type === 'furnitureAssetsLoaded') {
         try {
           const catalog = msg.catalog as FurnitureAsset[];
@@ -439,6 +454,7 @@ export function useExtensionMessages(
     agentStatuses,
     subagentTools,
     subagentCharacters,
+    groups,
     layoutReady,
     layoutWasReset,
     loadedAssets,

@@ -17,6 +17,7 @@ import type { OfficeState } from '../engine/officeState.js';
 import type {
   DeleteButtonBounds,
   EditorRenderState,
+  GroupRenderInfo,
   RotateButtonBounds,
   SelectionRenderState,
 } from '../engine/renderer.js';
@@ -27,6 +28,7 @@ import { EditTool, TILE_SIZE } from '../types.js';
 interface OfficeCanvasProps {
   officeState: OfficeState;
   onClick: (agentId: number) => void;
+  onMultiSelectChange?: (selectedIds: number[]) => void;
   isEditMode: boolean;
   editorState: EditorState;
   onEditorTileAction: (col: number, row: number) => void;
@@ -35,6 +37,7 @@ interface OfficeCanvasProps {
   onDeleteSelected: () => void;
   onRotateSelected: () => void;
   onDragMove: (uid: string, newCol: number, newRow: number) => void;
+  groups?: GroupRenderInfo[];
   editorTick: number;
   zoom: number;
   onZoomChange: (zoom: number) => void;
@@ -44,6 +47,7 @@ interface OfficeCanvasProps {
 export function OfficeCanvas({
   officeState,
   onClick,
+  onMultiSelectChange,
   isEditMode,
   editorState,
   onEditorTileAction,
@@ -52,6 +56,7 @@ export function OfficeCanvas({
   onDeleteSelected,
   onRotateSelected,
   onDragMove,
+  groups,
   editorTick: _editorTick,
   zoom,
   onZoomChange,
@@ -70,6 +75,9 @@ export function OfficeCanvas({
   const isEraseDraggingRef = useRef(false);
   // Zoom scroll accumulator for trackpad pinch sensitivity
   const zoomAccumulatorRef = useRef(0);
+  // Groups ref for imperative render access
+  const groupsRef = useRef<GroupRenderInfo[]>([]);
+  groupsRef.current = groups ?? [];
 
   // Clamp pan so the map edge can't go past a margin inside the viewport
   const clampPan = useCallback(
@@ -250,6 +258,11 @@ export function OfficeCanvas({
           hoveredTile: officeState.hoveredTile,
           seats: officeState.seats,
           characters: officeState.characters,
+          multiSelectedIds:
+            officeState.multiSelectedAgentIds.size > 0
+              ? officeState.multiSelectedAgentIds
+              : undefined,
+          groups: groupsRef.current.length > 0 ? groupsRef.current : undefined,
         };
 
         const { offsetX, offsetY } = renderFrame(
@@ -676,6 +689,34 @@ export function OfficeCanvas({
       if (hitId !== null) {
         // Dismiss any active bubble on click
         officeState.dismissBubble(hitId);
+
+        // Shift+click: multi-select for group creation (skip sub-agents)
+        const hitCh = officeState.characters.get(hitId);
+        if (e.shiftKey && hitCh && !hitCh.isSubagent) {
+          const multiSet = officeState.multiSelectedAgentIds;
+          if (multiSet.has(hitId)) {
+            multiSet.delete(hitId);
+          } else {
+            multiSet.add(hitId);
+          }
+          // Also add current single-selected agent to multi-select if not already
+          if (officeState.selectedAgentId !== null && !multiSet.has(officeState.selectedAgentId)) {
+            const selCh = officeState.characters.get(officeState.selectedAgentId);
+            if (selCh && !selCh.isSubagent) {
+              multiSet.add(officeState.selectedAgentId);
+            }
+          }
+          onMultiSelectChange?.([...multiSet]);
+          onClick(hitId);
+          return;
+        }
+
+        // Normal click: clear multi-select
+        if (officeState.multiSelectedAgentIds.size > 0) {
+          officeState.multiSelectedAgentIds.clear();
+          onMultiSelectChange?.([]);
+        }
+
         // Toggle selection: click same agent deselects, different agent selects
         if (officeState.selectedAgentId === hitId) {
           officeState.selectedAgentId = null;
@@ -686,6 +727,12 @@ export function OfficeCanvas({
         }
         onClick(hitId); // still focus terminal
         return;
+      }
+
+      // No agent hit — clear multi-select
+      if (officeState.multiSelectedAgentIds.size > 0) {
+        officeState.multiSelectedAgentIds.clear();
+        onMultiSelectChange?.([]);
       }
 
       // No agent hit — check seat click while agent is selected
@@ -728,7 +775,7 @@ export function OfficeCanvas({
         officeState.cameraFollowId = null;
       }
     },
-    [officeState, onClick, screenToWorld, screenToTile, isEditMode],
+    [officeState, onClick, onMultiSelectChange, screenToWorld, screenToTile, isEditMode],
   );
 
   const handleMouseLeave = useCallback(() => {

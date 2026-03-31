@@ -19,6 +19,9 @@ import {
   GHOST_PREVIEW_TINT_ALPHA,
   GHOST_VALID_TINT,
   GRID_LINE_COLOR,
+  GROUP_LINE_COLOR,
+  GROUP_LINE_DASH,
+  GROUP_LINE_WIDTH,
   HOVERED_OUTLINE_ALPHA,
   OUTLINE_Z_SORT_OFFSET,
   ROTATE_BUTTON_BG,
@@ -113,6 +116,7 @@ export function renderScene(
   zoom: number,
   selectedAgentId: number | null,
   hoveredAgentId: number | null,
+  multiSelectedIds?: Set<number>,
 ): void {
   const drawables: ZDrawable[] = [];
 
@@ -171,6 +175,24 @@ export function renderScene(
         },
       });
       continue;
+    }
+
+    // Cyan outline for multi-selected agents (group creation)
+    const isMultiSelected = multiSelectedIds !== undefined && multiSelectedIds.has(ch.id);
+    if (isMultiSelected) {
+      const outlineData = getOutlineSprite(spriteData);
+      const outlineCached = getCachedSprite(outlineData, zoom);
+      const olDrawX = drawX - zoom;
+      const olDrawY = drawY - zoom;
+      drawables.push({
+        zY: charZY - OUTLINE_Z_SORT_OFFSET,
+        draw: (c) => {
+          c.save();
+          c.globalAlpha = 0.9;
+          c.drawImage(outlineCached, olDrawX, olDrawY);
+          c.restore();
+        },
+      });
     }
 
     // White outline: full opacity for selected, 50% for hover
@@ -527,6 +549,59 @@ export interface ButtonBounds {
 export type DeleteButtonBounds = ButtonBounds;
 export type RotateButtonBounds = ButtonBounds;
 
+// ── Group connection lines ──────────────────────────────────────
+
+export interface GroupRenderInfo {
+  agentIds: number[];
+}
+
+export function renderGroupLines(
+  ctx: CanvasRenderingContext2D,
+  groups: GroupRenderInfo[],
+  characters: Map<number, Character>,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  if (groups.length === 0) return;
+  ctx.save();
+  ctx.strokeStyle = GROUP_LINE_COLOR;
+  ctx.lineWidth = GROUP_LINE_WIDTH;
+  ctx.setLineDash(GROUP_LINE_DASH);
+
+  for (const group of groups) {
+    // Draw lines between consecutive group members
+    const positions: Array<{ x: number; y: number }> = [];
+    for (const id of group.agentIds) {
+      const ch = characters.get(id);
+      if (ch && ch.matrixEffect !== 'despawn') {
+        positions.push({ x: ch.x, y: ch.y });
+      }
+    }
+    if (positions.length < 2) continue;
+
+    ctx.beginPath();
+    // Connect all members in a chain
+    for (let i = 0; i < positions.length; i++) {
+      const px = offsetX + positions[i].x * zoom;
+      const py = offsetY + positions[i].y * zoom;
+      if (i === 0) {
+        ctx.moveTo(px, py);
+      } else {
+        ctx.lineTo(px, py);
+      }
+    }
+    // Close the loop if more than 2 members
+    if (positions.length > 2) {
+      const first = positions[0];
+      ctx.lineTo(offsetX + first.x * zoom, offsetY + first.y * zoom);
+    }
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
 export interface EditorRenderState {
   showGrid: boolean;
   ghostSprite: SpriteData | null;
@@ -558,6 +633,10 @@ export interface SelectionRenderState {
   hoveredTile: { col: number; row: number } | null;
   seats: Map<string, Seat>;
   characters: Map<number, Character>;
+  /** Agent IDs selected via Shift+click for group creation */
+  multiSelectedIds?: Set<number>;
+  /** Groups to render connection lines for */
+  groups?: GroupRenderInfo[];
 }
 
 export function renderFrame(
@@ -613,7 +692,22 @@ export function renderFrame(
   // Draw walls + furniture + characters (z-sorted)
   const selectedId = selection?.selectedAgentId ?? null;
   const hoveredId = selection?.hoveredAgentId ?? null;
-  renderScene(ctx, allFurniture, characters, offsetX, offsetY, zoom, selectedId, hoveredId);
+  renderScene(
+    ctx,
+    allFurniture,
+    characters,
+    offsetX,
+    offsetY,
+    zoom,
+    selectedId,
+    hoveredId,
+    selection?.multiSelectedIds,
+  );
+
+  // Group connection lines (below bubbles, above characters)
+  if (selection?.groups && selection.characters) {
+    renderGroupLines(ctx, selection.groups, selection.characters, offsetX, offsetY, zoom);
+  }
 
   // Speech bubbles (always on top of characters)
   renderBubbles(ctx, characters, offsetX, offsetY, zoom);

@@ -143,6 +143,13 @@ export function startFileWatching(
   pollingTimers.set(agentId, interval);
 }
 
+/** Module-level callback for turn completion (set by PixelAgentsViewProvider for group broadcasting) */
+let turnCompleteCallback: ((agentId: number) => void) | null = null;
+
+export function setTurnCompleteCallback(cb: ((agentId: number) => void) | null): void {
+  turnCompleteCallback = cb;
+}
+
 export function readNewLines(
   agentId: number,
   agents: Map<number, AgentState>,
@@ -183,7 +190,15 @@ export function readNewLines(
 
     for (const line of lines) {
       if (!line.trim()) continue;
-      processTranscriptLine(agentId, line, agents, waitingTimers, permissionTimers, webview);
+      processTranscriptLine(
+        agentId,
+        line,
+        agents,
+        waitingTimers,
+        permissionTimers,
+        webview,
+        turnCompleteCallback ?? undefined,
+      );
     }
   } catch (e) {
     console.log(`[Pixel Agents] Read error for agent ${agentId}: ${e}`);

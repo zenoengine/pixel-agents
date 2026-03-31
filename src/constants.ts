@@ -51,3 +51,11 @@ export const WORKSPACE_KEY_AGENTS = 'pixel-agents.agents';
 export const WORKSPACE_KEY_AGENT_SEATS = 'pixel-agents.agentSeats';
 export const WORKSPACE_KEY_LAYOUT = 'pixel-agents.layout';
 export const TERMINAL_NAME_PREFIX = 'Claude Code';
+
+// ── Agent Groups (Multi-Agent Collaboration) ───────────────
+/** Maximum characters from the last assistant response to broadcast to group members */
+export const GROUP_BROADCAST_MAX_LENGTH = 2000;
+/** Delay before broadcasting to prevent message flooding (ms) */
+export const GROUP_BROADCAST_DELAY_MS = 1000;
+/** Workspace state key for persisted groups */
+export const WORKSPACE_KEY_GROUPS = 'pixel-agents.groups';

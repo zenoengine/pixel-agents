@@ -45,6 +45,8 @@ export class OfficeState {
   /** Accumulated time for furniture animation frame cycling */
   furnitureAnimTimer = 0;
   selectedAgentId: number | null = null;
+  /** Set of agent IDs selected for group creation (Shift+click multi-select) */
+  multiSelectedAgentIds: Set<number> = new Set();
   cameraFollowId: number | null = null;
   hoveredAgentId: number | null = null;
   hoveredTile: { col: number; row: number } | null = null;

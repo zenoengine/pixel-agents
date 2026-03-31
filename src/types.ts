@@ -40,3 +40,11 @@ export interface PersistedAgent {
   /** Workspace folder name (only set for multi-root workspaces) */
   folderName?: string;
 }
+
+export interface AgentGroup {
+  id: string;
+  name: string;
+  agentIds: number[];
+  /** Whether to auto-broadcast turn results to other members */
+  enabled: boolean;
+}

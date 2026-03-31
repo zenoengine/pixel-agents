@@ -38,9 +38,11 @@ import {
   dismissedJsonlFiles,
   ensureProjectScan,
   isTrackedProjectDir,
+  setTurnCompleteCallback,
   startExternalSessionScanning,
   startStaleExternalAgentCheck,
 } from './fileWatcher.js';
+import { GroupManager } from './groupManager.js';
 import type { LayoutWatcher } from './layoutPersistence.js';
 import { readLayoutFromFile, watchLayoutFile, writeLayoutToFile } from './layoutPersistence.js';
 import type { AgentState } from './types.js';
@@ -80,7 +82,12 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
   // Cross-window layout sync
   layoutWatcher: LayoutWatcher | null = null;
 
-  constructor(private readonly context: vscode.ExtensionContext) {}
+  // Agent groups (multi-agent collaboration)
+  groupManager: GroupManager;
+
+  constructor(private readonly context: vscode.ExtensionContext) {
+    this.groupManager = new GroupManager(context);
+  }
 
   private get extensionUri(): vscode.Uri {
     return this.context.extensionUri;
@@ -98,6 +105,11 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
     this.webviewView = webviewView;
     webviewView.webview.options = { enableScripts: true };
     webviewView.webview.html = getWebviewContent(webviewView.webview, this.extensionUri);
+
+    // Register turn-complete callback for group broadcasting
+    setTurnCompleteCallback((agentId: number) => {
+      this.groupManager.onTurnComplete(agentId, this.agents, this.webview);
+    });
 
     webviewView.webview.onDidReceiveMessage(async (message) => {
       if (message.type === 'openClaude') {
@@ -247,6 +259,12 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
           watchAllSessions,
           alwaysShowLabels,
           externalAssetDirectories: config.externalAssetDirectories,
+        });
+
+        // Send existing groups to webview
+        this.webview?.postMessage({
+          type: 'groupsUpdated',
+          groups: this.groupManager.getGroups(),
         });
 
         // Send workspace folders to webview (only when multi-root)
@@ -482,6 +500,27 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
           type: 'externalAssetDirectoriesUpdated',
           dirs: cfg.externalAssetDirectories,
         });
+      } else if (message.type === 'createGroup') {
+        const name = message.name as string;
+        const agentIds = message.agentIds as number[];
+        const group = this.groupManager.createGroup(name, agentIds);
+        this.webview?.postMessage({
+          type: 'groupsUpdated',
+          groups: this.groupManager.getGroups(),
+          createdGroupId: group.id,
+        });
+      } else if (message.type === 'removeGroup') {
+        this.groupManager.removeGroup(message.groupId as string);
+        this.webview?.postMessage({
+          type: 'groupsUpdated',
+          groups: this.groupManager.getGroups(),
+        });
+      } else if (message.type === 'toggleGroup') {
+        this.groupManager.toggleGroup(message.groupId as string);
+        this.webview?.postMessage({
+          type: 'groupsUpdated',
+          groups: this.groupManager.getGroups(),
+        });
       } else if (message.type === 'importLayout') {
         const uris = await vscode.window.showOpenDialog({
           filters: { 'JSON Files': ['json'] },
@@ -523,6 +562,8 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
           if (this.activeAgentId.current === id) {
             this.activeAgentId.current = null;
           }
+          // Remove from groups before removing agent
+          this.groupManager.removeAgentFromAllGroups(id);
           // Dismiss JSONL so external scanner doesn't re-adopt it
           dismissedJsonlFiles.set(agent.jsonlFile, Date.now());
           removeAgent(
@@ -536,6 +577,11 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
             this.persistAgents,
           );
           webviewView.webview.postMessage({ type: 'agentClosed', id });
+          // Notify webview of updated groups
+          this.webview?.postMessage({
+            type: 'groupsUpdated',
+            groups: this.groupManager.getGroups(),
+          });
         }
       }
     });
@@ -611,6 +657,8 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
   }
 
   dispose() {
+    setTurnCompleteCallback(null);
+    this.groupManager.dispose();
     this.layoutWatcher?.dispose();
     this.layoutWatcher = null;
     for (const id of [...this.agents.keys()]) {

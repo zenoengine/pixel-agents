@@ -64,6 +64,7 @@ export function processTranscriptLine(
   waitingTimers: Map<number, ReturnType<typeof setTimeout>>,
   permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
   webview: vscode.Webview | undefined,
+  onTurnComplete?: (agentId: number) => void,
 ): void {
   const agent = agents.get(agentId);
   if (!agent) return;
@@ -278,6 +279,8 @@ export function processTranscriptLine(
         id: agentId,
         status: 'waiting',
       });
+      // Notify group manager of turn completion for broadcasting
+      onTurnComplete?.(agentId);
     } else if (record.type && !agent.seenUnknownRecordTypes.has(record.type)) {
       // Log first occurrence of unrecognized record types to help diagnose issues
       // where Claude Code changes JSONL format. Known types we intentionally skip:
